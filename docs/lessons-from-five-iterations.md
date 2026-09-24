@@ -15,19 +15,18 @@ the failure mode if you hit a different version of the same problem.
 
 ## v1: overfit and NaN
 
-The first pass used a small, hand-written dataset with no dropout on the
-LoRA adapters and no weight decay. Training loss dropped fast, which felt
-like a win, and then a few epochs in, eval loss started climbing while
-train loss kept falling: textbook overfitting on a small dataset with
-nothing pulling the adapter back toward the base model's behavior. On a
-later run with a slightly different data mix, loss went to `NaN` partway
-through training. Chasing that down meant learning that `bnb` 4-bit base
-weights plus a learning rate tuned for a different, larger dataset can
-destabilize a training run when the effective batch size and warmup don't
-match the data volume. The fix for both problems was the same shape:
-regularize. Add `lora_dropout`, add `weight_decay`, and stop treating "loss
-went down" as the only signal that mattered. `docs/cost-and-gpu-notes.md`
-has the config that resulted.
+The first pass used a small dataset assembled quickly from document
+extractions and rough call transcripts, with no dropout on the LoRA
+adapters, no weight decay, and no validation split. The data itself was
+the bigger problem: page numbers and formatting noise mixed into the text,
+no speaker labels, and nearly identical prompts across examples. Training
+loss dropped to a number that looked like a win, and then the model
+produced `NaN` on every inference call. With no validation set there was
+no signal during training that anything was wrong. The fix was the same
+shape for both problems: clean and label the data, hold out a validation
+split, add `lora_dropout` and `weight_decay`, and stop treating "loss went
+down" as the only signal that mattered. `docs/cost-and-gpu-notes.md` has
+the config that resulted.
 
 ## v2: it worked, but only here
 
@@ -65,22 +64,25 @@ one symptom and left the root cause in place. The model had never seen an
 example where the right answer depended on three prior turns of context,
 because no training example had three prior turns of context.
 
-## v5: multi-turn, and the fix held
+## v5: multi-turn, from real conversations
 
 The fifth pass changed the data format itself: every training example
 became one agent turn, with the full conversation history up to that point
-as context, drawn from real multi-turn call transcripts instead of
+as context, drawn from transcribed real multi-turn calls instead of
 one-off synthetic pairs. Response length stayed short (the v4 fix), but
-now the shortness came from the shape of the data rather than a
-post-hoc constraint, because a single short turn embedded in real
-back-and-forth history is what a real conversation actually looks like.
+now the shortness came from the shape of the data rather than a post-hoc
+constraint, because a single short turn embedded in real back-and-forth
+history is what a real conversation actually looks like. Building that
+dataset meant standing up a transcription and speaker-labeling pipeline
+first, which is its own project and is not included here.
+
 This is the shape this repository's synthetic dataset generator
 (`llm_finetuning_recipes/data_gen.py`) reproduces: one example per agent
 turn, full history as context, a short single-clause target. It is not the
-same dataset, and it never touches real call data, but it is built to
-reproduce the same lesson: a model trained on isolated pairs learns to
-write monologues, and a model trained on turns embedded in real
-conversation history learns to take turns.
+same dataset, and it never touches real call data, but it is built around
+the same lesson: a model trained on isolated pairs learns to write
+monologues, and a model trained on turns embedded in conversation history
+learns to take turns.
 
 ## What carried over into this repo
 
@@ -90,7 +92,7 @@ conversation history learns to take turns.
   losses and stopped overfitting.
 - The dataset shape (`scripts/prepare_data.py`, one example per agent turn,
   full history as context, 5 to 25 word single-clause targets) is the shape
-  that stopped the monologuing.
+  that addresses the monologuing seen in v3 and v4.
 - `scripts/check_dataset.py` exists because v3's isolated test suite missed
   a real problem. A dataset checker that looks at target length and clause
   structure, not just format, would have caught the shape of v1 through v4's
