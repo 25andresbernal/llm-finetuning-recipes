@@ -307,7 +307,7 @@ truth for both `train.py` and `train.ipynb`:
 
 ## Contributing
 
-Issues and pull requests are welcome. Before opening a pull request:
+If you have run this recipe on different hardware or a different base model, a pull request with your config and what changed is welcome. Before opening one:
 
 ```bash
 uv run ruff check .
