@@ -1,0 +1,41 @@
+# Training config for the QLoRA conversational-agent recipe.
+# These values are the ones that stopped producing NaN losses and overfit
+# adapters after five iterations on a live scheduling-agent dataset; see
+# docs/lessons-from-five-iterations.md for the version history and
+# docs/cost-and-gpu-notes.md for the VRAM budget they were tuned against
+# (an L4, 24 GB).
+
+base_model: unsloth/llama-3-8b-bnb-4bit
+
+lora:
+  r: 16
+  alpha: 16
+  dropout: 0.1
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+
+training:
+  learning_rate: 0.0002
+  weight_decay: 0.01
+  lr_scheduler_type: cosine
+  per_device_train_batch_size: 2
+  gradient_accumulation_steps: 4
+  num_train_epochs: 5
+  max_seq_length: 2048
+  eval_strategy: epoch
+  # Eval batch is 1, not 2, because eval runs without gradient checkpointing
+  # freeing the activation memory training relies on. At batch 2 eval OOMs
+  # on a 24 GB L4 at this max_seq_length; batch 1 does not.
+  per_device_eval_batch_size: 1
+
+data:
+  train_path: data/sample/train.jsonl
+  val_path: data/sample/val.jsonl
+
+output_dir: outputs/conversational-agent-qlora
